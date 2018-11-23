@@ -43,36 +43,22 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	u1 := models.User{GID: 0, UID: 1, Version: 0, TCC: 10000}
+	u1 := models.User{Base: models.Base{ID: 1}, GID: 0, TCC: 10000}
 	engine.CreateTable(&u1)
 	engine.Insert(&u1)
 	engine.Insert(&u1)
 
-	u2 := models.User{GID: 0, UID: 2, Version: 0, TCC: 10000}
+	u2 := models.User{Base: models.Base{ID: 2}, GID: 0, TCC: 10000}
 	engine.Insert(&u2)
 
-	m1 := models.TchMachine{ID: 1, GID: 0, UID: 1, Version: 0}
+	m1 := models.TchMachine{}
 	engine.CreateTable(&m1)
-	engine.Insert(&m1)
-
-	for i := 3; i > 0; i-- {
-		m := models.TchMachine{ID: i, GID: 0, UID: 1, Version: 0}
-		engine.Insert(&m)
-	}
-
-	for i := 6; i > 3; i-- {
-		m := models.TchMachine{ID: i, GID: 0, UID: 1, Version: 0}
-		engine.Insert(&m)
-	}
-
-	m1.ID = 5
-	engine.Delete(&m1)
 
 	//peformance
 	cnt := 1000000
 	start := time.Now().Unix()
 	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i, GID: 0, UID: i % 2, Version: 0}
+		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
 		//log.Printf("m:+%v", m)
 		engine.Insert(&m)
 	}
@@ -81,7 +67,7 @@ func main() {
 
 	start = time.Now().Unix()
 	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i, GID: 0, UID: i % 2, Version: 1}
+		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
 		engine.Update(&m)
 	}
 	end = time.Now().Unix()

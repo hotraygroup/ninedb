@@ -34,14 +34,11 @@ func CreateTable(obj interface{}) {
 	db.tables[tableName] = make([]interface{}, 0) //store array
 	db.chans[tableName] = make(chan int, ROWSIZE)
 	db.rows[tableName] = make(map[int]int) //rid  -> array index
-	db.locks[tableName] = sync.RWMutex{}
-	db.sorting[tableName] = make(map[string]bool)
-
-	//存在索引
-	if indexs := obj.(Row).Index(); indexs != nil {
-		db.indexs[tableName] = make(map[string][]int)
-	}
-
+	db.locks[tableName] = &sync.Mutex{}
+	db.sorting[tableName] = make(map[string]int32)
+	db.sortlocks[tableName] = &sync.Mutex{}
+	db.indexs[tableName] = make(map[string][]int)
+	db.versions[tableName] = make(map[int]*Version)
 }
 
 ////////////////////////////内部调用////////////////////////////////////////////////////////
@@ -69,31 +66,36 @@ func put(tableName string, rid int) {
 	default:
 		log.Printf("table %s's chan is full", tableName)
 	}
-
 }
 
 func sortIndex(tableName string, index string) {
-	if db.sorting[tableName][index] == true {
+	slock := db.sortlocks[tableName]
+	slock.Lock()
+	if v, ok := db.sorting[tableName][index]; ok && v == 1 {
+		slock.Unlock()
 		return
 	}
-	db.sorting[tableName][index] = true
-	time.AfterFunc(5*time.Second, func() {
+	db.sorting[tableName][index] = 1
+	slock.Unlock()
+
+	time.AfterFunc(2*time.Second, func() {
+		slock := db.sortlocks[tableName]
+		slock.Lock()
+		db.sorting[tableName][index] = 0
+		slock.Unlock()
+
 		start := time.Now().Unix()
+
 		lock := db.locks[tableName]
 		lock.Lock()
-		defer lock.Unlock()
-		var arr []int
-		if index == "global" {
-			arr = db.ids[tableName]
-		} else {
-			arr = db.indexs[tableName][index]
-		}
-		sort.IntSlice(arr).Sort()
-		end := time.Now().Unix()
-		log.Printf("sort index %s:%s %d records finished in %d second", tableName, index, len(arr), end-start)
-		db.sorting[tableName][index] = false
-	})
+		length := len(db.indexs[tableName][index])
+		sort.IntSlice(db.indexs[tableName][index]).Sort()
+		lock.Unlock()
 
+		end := time.Now().Unix()
+		log.Printf("sort index %s:%s %d records finished in %d second", tableName, index, length, end-start)
+
+	})
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -124,12 +126,14 @@ func Insert(obj interface{}) error {
 
 	db.tables[tableName][rid] = obj
 	db.rows[tableName][id] = rid
-	//添加到pk ids
-	if len(db.ids[tableName]) == 0 {
-		db.sorting[tableName]["global"] = false
-	}
-	db.ids[tableName] = append(db.ids[tableName], id)
-	sortIndex(tableName, "global")
+
+	//更新versions
+	db.versions[tableName][id] = &Version{Version: 0, SavedVersion: 0}
+
+	//添加到主键索引
+	pk := PRIMARYKEY
+	db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
+	sortIndex(tableName, pk)
 
 	//log.Printf("insert record id[%d] in table %s's %d row", id, tableName, rid)
 
@@ -143,16 +147,12 @@ func Insert(obj interface{}) error {
 		if len(indexs[i]) == 0 {
 			continue
 		}
-		pk := fmt.Sprintf("[%s][%d][%d]", tableName, len(indexs), len(indexs[i]))
+		pk := tableName
 		sort.StringSlice(indexs[i]).Sort()
 		for j := 0; j < len(indexs[i]); j++ {
 			pk += fmt.Sprintf(":%s:%v", indexs[i][j], reflect.Indirect(val).FieldByName(indexs[i][j]))
 		}
-		if len(db.indexs[tableName][pk]) == 0 {
-			db.sorting[tableName][pk] = false
-		}
 		db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
-
 		sortIndex(tableName, pk)
 	}
 	return nil
@@ -178,6 +178,9 @@ func Update(obj interface{}) error {
 
 	if rid, ok := db.rows[tableName][id]; ok {
 		db.tables[tableName][rid] = obj
+		//更新versions
+		ver := db.versions[tableName][id]
+		ver.Version += 1
 		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
 
 	} else {
@@ -239,14 +242,17 @@ func Delete(obj interface{}) {
 
 	put(tableName, rid)
 	delete(db.rows[tableName], id)
-	//删除pk id
-	for i := 0; i < len(db.ids[tableName]); i++ {
-		if db.ids[tableName][i] == id {
-			db.ids[tableName][i] = db.ids[tableName][len(db.ids[tableName])-1]
-			db.ids[tableName] = db.ids[tableName][:len(db.ids[tableName])-1]
+	delete(db.versions[tableName], id)
+
+	//删除主键索引
+	pk := PRIMARYKEY
+	for k := 0; k < len(db.indexs[tableName][pk]); k++ {
+		if db.indexs[tableName][pk][k] == id {
+			db.indexs[tableName][pk][k] = db.indexs[tableName][pk][len(db.indexs[tableName][pk])-1]
+			db.indexs[tableName][pk] = db.indexs[tableName][pk][:len(db.indexs[tableName][pk])-1]
 		}
 	}
-	sortIndex(tableName, "global")
+	sortIndex(tableName, pk)
 
 	log.Printf("delete recoed %d from %s", id, tableName)
 
@@ -260,7 +266,7 @@ func Delete(obj interface{}) {
 		if len(indexs[i]) == 0 {
 			continue
 		}
-		pk := fmt.Sprintf("[%s][%d][%d]", tableName, len(indexs), len(indexs[i]))
+		pk := tableName
 		sort.StringSlice(indexs[i]).Sort()
 		for j := 0; j < len(indexs[i]); j++ {
 			pk += fmt.Sprintf(":%s:%v", indexs[i][j], reflect.Indirect(val).FieldByName(indexs[i][j]))
