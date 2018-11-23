@@ -7,6 +7,7 @@ import (
 	_ "net/http/pprof"
 	"ninedb/engine"
 	"ninedb/models"
+	_ "ninedb/store"
 	"os"
 	"os/signal"
 	"runtime"
@@ -55,7 +56,7 @@ func main() {
 	engine.CreateTable(&m1)
 
 	//peformance
-	cnt := 1000000
+	cnt := 100
 	start := time.Now().Unix()
 	for i := 0; i < cnt; i++ {
 		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}

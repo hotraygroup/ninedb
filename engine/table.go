@@ -130,6 +130,9 @@ func Insert(obj interface{}) error {
 	//更新versions
 	db.versions[tableName][id] = &Version{Version: 0, SavedVersion: 0}
 
+	//数据持久化
+	putTrx(&Transaction{Cmd: "INSERT", Data: obj})
+
 	//添加到主键索引
 	pk := PRIMARYKEY
 	db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
@@ -181,6 +184,10 @@ func Update(obj interface{}) error {
 		//更新versions
 		ver := db.versions[tableName][id]
 		ver.Version += 1
+
+		//数据持久化
+		putTrx(&Transaction{Cmd: "UPDATE", Data: obj})
+
 		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
 
 	} else {
@@ -243,6 +250,8 @@ func Delete(obj interface{}) {
 	put(tableName, rid)
 	delete(db.rows[tableName], id)
 	delete(db.versions[tableName], id)
+	//数据持久化
+	putTrx(&Transaction{Cmd: "DELETE", Data: obj})
 
 	//删除主键索引
 	pk := PRIMARYKEY
