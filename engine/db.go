@@ -10,8 +10,10 @@ const (
 )
 
 type Version struct {
-	Version      int64
+	Version      uint64
+	UpdateStamp  int64
 	SavedVersion uint64
+	SavedStamp   int64
 }
 
 type DB struct {

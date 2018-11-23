@@ -99,7 +99,7 @@ func sortIndex(tableName string, index string) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-func Insert(obj interface{}) error {
+func Insert(obj interface{}, load ...bool) error {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
 	tableName := typ.Name()
@@ -128,10 +128,12 @@ func Insert(obj interface{}) error {
 	db.rows[tableName][id] = rid
 
 	//更新versions
-	db.versions[tableName][id] = &Version{Version: 0, SavedVersion: 0}
+	db.versions[tableName][id] = &Version{Version: 0, UpdateStamp: time.Now().Unix(), SavedVersion: 0}
 
 	//数据持久化
-	putTrx(&Transaction{Cmd: "INSERT", Data: obj})
+	if len(load) == 0 { //从数据库加载时load需传值，避免回写
+		putTrx(&Transaction{Cmd: "INSERT", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
+	}
 
 	//添加到主键索引
 	pk := PRIMARYKEY
@@ -184,9 +186,10 @@ func Update(obj interface{}) error {
 		//更新versions
 		ver := db.versions[tableName][id]
 		ver.Version += 1
+		ver.UpdateStamp = time.Now().Unix()
 
 		//数据持久化
-		putTrx(&Transaction{Cmd: "UPDATE", Data: obj})
+		putTrx(&Transaction{Cmd: "UPDATE", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
 
 		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
 
@@ -251,7 +254,7 @@ func Delete(obj interface{}) {
 	delete(db.rows[tableName], id)
 	delete(db.versions[tableName], id)
 	//数据持久化
-	putTrx(&Transaction{Cmd: "DELETE", Data: obj})
+	putTrx(&Transaction{Cmd: "DELETE", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
 
 	//删除主键索引
 	pk := PRIMARYKEY

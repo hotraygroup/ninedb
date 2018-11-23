@@ -4,32 +4,33 @@ import (
 	//"encoding/json"
 	"log"
 	"ninedb/engine"
+	"time"
+)
+
+const (
+	WORKCNT = 1
 )
 
 func work() {
-	go func() {
-		for {
-			trx := engine.GetTrx()
-			switch trx.Cmd {
-			case "INSERT":
-				id := trx.Data.(engine.Row).GetID()
-				log.Printf("insert record %d", id)
-				resp := &engine.Response{Code: "OK", Data: trx.Data}
-				engine.PutResp(resp)
-			case "UPDATE":
-				id := trx.Data.(engine.Row).GetID()
-				log.Printf("update record %d", id)
-				resp := &engine.Response{Code: "OK", Data: trx.Data}
-				engine.PutResp(resp)
-			case "DELETE":
-				id := trx.Data.(engine.Row).GetID()
-				log.Printf("delete record %d", id)
-				resp := &engine.Response{Code: "OK", Data: trx.Data}
-				engine.PutResp(resp)
+	for i := 0; i < WORKCNT; i++ {
+		go func() {
+			for {
+				trx := engine.GetTrx()
+				switch trx.Cmd {
+				case "INSERT", "UPDATE":
+					log.Printf("insert/update record %d", trx.ID)
+					//todo save to db
+					resp := &engine.Response{Code: "OK", TableName: trx.TableName, ID: trx.ID, SavedVersion: trx.Version, SavedStamp: time.Now().Unix()}
+					engine.PutResp(resp)
+				case "DELETE":
+					log.Printf("delete record %d", trx.ID)
+					resp := &engine.Response{Code: "OK", TableName: trx.TableName, ID: trx.ID, SavedVersion: trx.Version, SavedStamp: time.Now().Unix()}
+					engine.PutResp(resp)
+				}
 			}
-		}
-	}()
+		}()
 
+	}
 }
 
 func init() {

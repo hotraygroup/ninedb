@@ -5,14 +5,18 @@ import (
 )
 
 type Transaction struct {
-	Cmd  string
-	Data interface{}
+	Cmd       string
+	TableName string
+	ID        int
+	Version   uint64
 }
 
 type Response struct {
-	Code   string
-	Result string
-	Data   interface{}
+	Code         string
+	TableName    string
+	ID           int
+	SavedVersion uint64
+	SavedStamp   int64
 }
 
 func Prepare() {
@@ -49,9 +53,9 @@ func work() {
 			res := getResp()
 			switch res.Code {
 			case "OK":
-				id := res.Data.(Row).GetID()
-				log.Printf("id %d done", id)
-
+				log.Printf("table %s's record %d, version %d done at %d", res.TableName, res.ID, res.SavedVersion, res.SavedStamp)
+			case "SKIP":
+				log.Printf("table %s's record %d, version %d skipped at %d", res.TableName, res.ID, res.SavedVersion, res.SavedStamp)
 			}
 		}
 	}()
