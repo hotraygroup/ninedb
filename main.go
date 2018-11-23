@@ -69,10 +69,11 @@ func main() {
 	engine.Delete(&m1)
 
 	//peformance
-	cnt := 10000
+	cnt := 1000000
 	start := time.Now().Unix()
 	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i, GID: 0, UID: i % 1000, Version: 0}
+		m := models.TchMachine{ID: i, GID: 0, UID: i % 2, Version: 0}
+		//log.Printf("m:+%v", m)
 		engine.Insert(&m)
 	}
 	end := time.Now().Unix()
@@ -80,7 +81,7 @@ func main() {
 
 	start = time.Now().Unix()
 	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i, GID: 0, UID: i % 1000, Version: 1}
+		m := models.TchMachine{ID: i, GID: 0, UID: i % 2, Version: 1}
 		engine.Update(&m)
 	}
 	end = time.Now().Unix()

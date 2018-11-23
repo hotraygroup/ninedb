@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"time"
 )
 
 type Table interface {
@@ -34,6 +35,7 @@ func CreateTable(obj interface{}) {
 	db.chans[tableName] = make(chan int, ROWSIZE)
 	db.rows[tableName] = make(map[int]int) //rid  -> array index
 	db.locks[tableName] = sync.RWMutex{}
+	db.sorting[tableName] = make(map[string]bool)
 
 	//存在索引
 	if indexs := obj.(Row).Index(); indexs != nil {
@@ -70,8 +72,31 @@ func put(tableName string, rid int) {
 
 }
 
-////////////////////////////////////////////////////////////////////////////////////
+func sortIndex(tableName string, index string) {
+	if db.sorting[tableName][index] == true {
+		return
+	}
+	db.sorting[tableName][index] = true
+	time.AfterFunc(5*time.Second, func() {
+		start := time.Now().Unix()
+		lock := db.locks[tableName]
+		lock.Lock()
+		defer lock.Unlock()
+		var arr []int
+		if index == "global" {
+			arr = db.ids[tableName]
+		} else {
+			arr = db.indexs[tableName][index]
+		}
+		sort.IntSlice(arr).Sort()
+		end := time.Now().Unix()
+		log.Printf("sort index %s:%s %d records finished in %d second", tableName, index, len(arr), end-start)
+		db.sorting[tableName][index] = false
+	})
 
+}
+
+////////////////////////////////////////////////////////////////////////////////////
 func Insert(obj interface{}) error {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
@@ -96,33 +121,40 @@ func Insert(obj interface{}) error {
 	}
 
 	rid := get(tableName)
-	//todo check rid == -1
 
 	db.tables[tableName][rid] = obj
 	db.rows[tableName][id] = rid
 	//添加到pk ids
+	if len(db.ids[tableName]) == 0 {
+		db.sorting[tableName]["global"] = false
+	}
 	db.ids[tableName] = append(db.ids[tableName], id)
-	sort.IntSlice(db.ids[tableName]).Sort()
+	sortIndex(tableName, "global")
 
 	//log.Printf("insert record id[%d] in table %s's %d row", id, tableName, rid)
 
 	indexs := obj.(Row).Index()
-	if indexs != nil {
+	if indexs == nil {
 		return nil
 	}
 
 	//存在索引，创建索引
-	for i := 0; i < len(indexs) && len(indexs[i]) > 0; i++ {
+	for i := 0; i < len(indexs); i++ {
+		if len(indexs[i]) == 0 {
+			continue
+		}
 		pk := fmt.Sprintf("[%s][%d][%d]", tableName, len(indexs), len(indexs[i]))
 		sort.StringSlice(indexs[i]).Sort()
 		for j := 0; j < len(indexs[i]); j++ {
 			pk += fmt.Sprintf(":%s:%v", indexs[i][j], reflect.Indirect(val).FieldByName(indexs[i][j]))
 		}
+		if len(db.indexs[tableName][pk]) == 0 {
+			db.sorting[tableName][pk] = false
+		}
 		db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
-		sort.IntSlice(db.indexs[tableName][pk]).Sort()
-	}
-	//log.Printf("index is %+v", db.indexs[tableName])
 
+		sortIndex(tableName, pk)
+	}
 	return nil
 }
 
@@ -214,7 +246,7 @@ func Delete(obj interface{}) {
 			db.ids[tableName] = db.ids[tableName][:len(db.ids[tableName])-1]
 		}
 	}
-	sort.IntSlice(db.ids[tableName]).Sort()
+	sortIndex(tableName, "global")
 
 	log.Printf("delete recoed %d from %s", id, tableName)
 
@@ -239,7 +271,7 @@ func Delete(obj interface{}) {
 				db.indexs[tableName][pk] = db.indexs[tableName][pk][:len(db.indexs[tableName][pk])-1]
 			}
 		}
-		sort.IntSlice(db.indexs[tableName][pk]).Sort()
+		sortIndex(tableName, pk)
 	}
 	//log.Printf("index is %+v", db.indexs[tableName])
 }
