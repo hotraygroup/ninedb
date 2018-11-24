@@ -65,13 +65,16 @@ func GetData(trx *Transaction) (uint64, []byte) { //return latest version data
 	lock.Lock()
 	defer lock.Unlock()
 
-	if ver, ok := db.versions[trx.TableName][trx.ID]; !ok || ver.SavedVersion >= trx.Version { //记录已被删除或当前版本小于已保存版本
+	meta, ok := db.metas[trx.TableName][trx.ID]
+	if !ok || meta.SavedVersion >= trx.Version { //记录已被删除或当前版本小于已保存版本
 		return 0, nil
 	}
+
 	rid := db.rows[trx.TableName][trx.ID]
 	obj := db.tables[trx.TableName][rid]
-	ver := db.versions[trx.TableName][trx.ID].Version
+	ver := meta.Version
 	buf, _ := json.Marshal(obj)
+
 	return ver, buf
 }
 
@@ -80,21 +83,17 @@ func updateSavedVersion(resp *Response) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	if ver, ok := db.versions[resp.TableName][resp.ID]; ok && ver.SavedVersion < resp.SavedVersion {
-		ver.SavedVersion = resp.SavedVersion
-		ver.SavedStamp = time.Now().Unix()
+	if meta, ok := db.metas[resp.TableName][resp.ID]; ok && meta.SavedVersion < resp.SavedVersion {
+		meta.SavedVersion = resp.SavedVersion
+		meta.SavedStamp = time.Now().Unix()
 	}
 }
-
-const (
-	WORKCHANSIZE = 10 * M
-)
 
 var ReqChan chan *Transaction
 var RespChan chan *Response
 
 func init() {
-	ReqChan = make(chan *Transaction, WORKCHANSIZE)
-	RespChan = make(chan *Response, WORKCHANSIZE)
+	ReqChan = make(chan *Transaction, 100*M)
+	RespChan = make(chan *Response, 100*M)
 	work()
 }

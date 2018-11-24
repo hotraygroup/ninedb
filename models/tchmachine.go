@@ -1,7 +1,7 @@
 package models
 
 type TchMachine struct {
-	Base
+	ID  int
 	GID int
 	UID int
 }
@@ -16,6 +16,6 @@ func (t *TchMachine) Index() [][]string {
 
 }
 
-func (t *TchMachine) TableName() string {
-	return "TchMachine"
+func (t *TchMachine) GetID() int {
+	return t.ID
 }

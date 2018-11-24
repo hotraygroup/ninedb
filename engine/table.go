@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-type Table interface {
-	TableName() string
-}
-
 func CreateTable(obj interface{}) {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
@@ -38,7 +34,7 @@ func CreateTable(obj interface{}) {
 	db.sorting[tableName] = make(map[string]int32)
 	db.sortlocks[tableName] = &sync.Mutex{}
 	db.indexs[tableName] = make(map[string][]int)
-	db.versions[tableName] = make(map[int]*Version)
+	db.metas[tableName] = make(map[int]*MetaInfo)
 }
 
 ////////////////////////////内部调用////////////////////////////////////////////////////////
@@ -124,24 +120,24 @@ func Insert(obj interface{}, load ...interface{}) error {
 
 	rid := get(tableName)
 
+	//创建meta
+	meta := &MetaInfo{Version: 1, UpdateStamp: time.Now().Unix(), SavedVersion: 0}
+	////从数据库加载时load需传值，避免回写
+	if len(load) != 0 {
+		meta.SavedVersion = 1
+	}
+	db.metas[tableName][id] = meta
+
 	db.tables[tableName][rid] = obj
 	db.rows[tableName][id] = rid
 
-	//更新versions
-	ver := &Version{Version: 1, UpdateStamp: time.Now().Unix(), SavedVersion: 0}
-	////从数据库加载时load需传值，避免回写
-	if len(load) != 0 {
-		ver.SavedVersion = 1
-	}
-	db.versions[tableName][id] = ver
-
 	//发起持久化指令
-	putTrx(&Transaction{Cmd: "INSERT", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
+	putTrx(&Transaction{Cmd: "INSERT", TableName: tableName, ID: id, Version: meta.Version})
 
-	//添加到主键索引
+	//添加到主键列表
 	pk := PRIMARYKEY
 	db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
-	//索引排序
+	//列表排序
 	sortIndex(tableName, pk)
 
 	//log.Printf("insert record id[%d] in table %s's %d row", id, tableName, rid)
@@ -188,13 +184,13 @@ func Update(obj interface{}) error {
 
 	if rid, ok := db.rows[tableName][id]; ok {
 		db.tables[tableName][rid] = obj
-		//更新versions
-		ver := db.versions[tableName][id]
-		ver.Version += 1
-		ver.UpdateStamp = time.Now().Unix()
+		//更新meta
+		meta := db.metas[tableName][id]
+		meta.Version += 1
+		meta.UpdateStamp = time.Now().Unix()
 
 		//发起持久化指令
-		putTrx(&Transaction{Cmd: "UPDATE", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
+		putTrx(&Transaction{Cmd: "UPDATE", TableName: tableName, ID: id, Version: meta.Version})
 
 		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
 
@@ -205,8 +201,62 @@ func Update(obj interface{}) error {
 	return nil
 }
 
-//回调更新，用户转账、打工等场景  todo
-func UpdateFunc() error {
+//更新某个列 cmd 支持REPLACE， INC, DESC
+func UpdateFiled(obj interface{}, fieldName string, cmd string, value interface{}) error {
+	val := reflect.ValueOf(obj)
+	typ := reflect.Indirect(val).Type()
+	tableName := typ.Name()
+
+	db.RLock()
+	if _, ok := db.tables[tableName]; !ok {
+		panic(fmt.Errorf("table %s is not exsit", tableName))
+	}
+	db.RUnlock()
+
+	id := obj.(Row).GetID()
+
+	lock := db.locks[tableName]
+	lock.Lock()
+	defer lock.Unlock()
+
+	if rid, ok := db.rows[tableName][id]; ok {
+		val := reflect.ValueOf(db.tables[tableName][rid]).Elem()
+		switch val.FieldByName(fieldName).Type().Kind() {
+		case reflect.String:
+			val.FieldByName(fieldName).SetString(value.(string))
+		case reflect.Int64, reflect.Int32, reflect.Int:
+			switch cmd {
+			case "REPLACE":
+				val.FieldByName(fieldName).SetInt(value.(int64))
+			case "INC":
+				val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() + value.(int64))
+			case "DESC":
+				if val.FieldByName(fieldName).Int() >= value.(int64) {
+					val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() - value.(int64))
+				} else {
+					return fmt.Errorf("record %d %s not enough", id, fieldName)
+				}
+			default:
+				panic(fmt.Errorf("unsupport update cmd %s ", cmd))
+			}
+		default:
+			fmt.Printf("type is %+v", val.FieldByName(fieldName).Type().Kind())
+			db.tables[tableName][rid] = val
+		}
+		//更新meta
+		meta := db.metas[tableName][id]
+		meta.Version += 1
+		meta.UpdateStamp = time.Now().Unix()
+
+		//发起持久化指令
+		putTrx(&Transaction{Cmd: "UPDATE", TableName: tableName, ID: id, Version: meta.Version})
+
+		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
+
+	} else {
+		log.Printf("record %d is not exist in table %s", id, tableName)
+		return fmt.Errorf("record %d is not exist in table %s", id, tableName)
+	}
 	return nil
 }
 
@@ -255,15 +305,15 @@ func Delete(obj interface{}) {
 		return
 	}
 
-	ver := db.versions[tableName][id]
+	meta := db.metas[tableName][id]
 	delete(db.rows[tableName], id)
-	delete(db.versions[tableName], id)
+	delete(db.metas[tableName], id)
 	put(tableName, rid)
 
 	//发起持久化指令
-	putTrx(&Transaction{Cmd: "DELETE", TableName: tableName, ID: id, Version: ver.Version})
+	putTrx(&Transaction{Cmd: "DELETE", TableName: tableName, ID: id, Version: meta.Version})
 
-	//删除主键索引
+	//删除主键列表
 	pk := PRIMARYKEY
 	for k := 0; k < len(db.indexs[tableName][pk]); k++ {
 		if db.indexs[tableName][pk][k] == id {
@@ -271,7 +321,7 @@ func Delete(obj interface{}) {
 			db.indexs[tableName][pk] = db.indexs[tableName][pk][:len(db.indexs[tableName][pk])-1]
 		}
 	}
-	//索引排序
+	//列表排序
 	sortIndex(tableName, pk)
 
 	log.Printf("delete recoed %d from %s", id, tableName)
