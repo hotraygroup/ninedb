@@ -84,6 +84,11 @@ func sortIndex(tableName string, index string) {
 
 		lock := db.locks[tableName]
 		lock.Lock()
+		if _, ok := db.indexs[tableName][index]; !ok {
+			log.Printf("index %s in table %s maybe deleted", index, tableName)
+			lock.Unlock()
+			return
+		}
 		length := len(db.indexs[tableName][index])
 		sort.IntSlice(db.indexs[tableName][index]).Sort()
 		lock.Unlock()

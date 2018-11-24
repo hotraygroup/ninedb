@@ -70,27 +70,38 @@ func sample() {
 	//////////////////建表/////////////////////////////////////////
 
 	///////////////////插入/////////////////////////////////////////
-	cnt := 10
+	ucnt := 10
+	//插入ucnt个用户
+	for i := 0; i <= ucnt; i++ {
+		u := models.User{UID: i, GID: 0, TCC: 10000}
+		engine.Insert(&u)
+	}
+	mcnt := 10
 	start := time.Now().Unix()
 
-	//插入cnt台矿机
-	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i, GID: 0, UID: i % 10}
+	//插入mcnt台矿机
+	for i := 0; i < mcnt; i++ {
+		m := models.TchMachine{ID: i, GID: 0, UID: i % ucnt}
 		//log.Printf("m:+%v", m)
 		engine.Insert(&m, "load")
 	}
 	end := time.Now().Unix()
-	log.Printf("insert %d records in %d second", cnt, end-start)
+	log.Printf("insert %d records in %d second", mcnt, end-start)
 	///////////////////插入/////////////////////////////////////////
+
+	///////////////////删除/////////////////////////////////////////
+	u10 := models.User{UID: 10, GID: 0, TCC: 10000}
+	engine.Delete(&u10)
+	///////////////////删除/////////////////////////////////////////
 
 	///////////////////更新/////////////////////////////////////////
 	start = time.Now().Unix()
-	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{ID: i % 10, GID: 0, UID: i % 10}
+	for i := 0; i < mcnt; i++ {
+		m := models.TchMachine{ID: i % 10, GID: 0, UID: i % ucnt}
 		engine.Update(&m)
 	}
 	end = time.Now().Unix()
-	log.Printf("update %d records in %d second", cnt, end-start)
+	log.Printf("update %d records in %d second", mcnt, end-start)
 	///////////////////更新/////////////////////////////////////////
 
 	///////////////////转账/////////////////////////////////////////////
