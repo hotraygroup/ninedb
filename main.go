@@ -70,24 +70,16 @@ func sample() {
 	cnt := 1000000
 	start := time.Now().Unix()
 
-	//插入10台矿机
-	for i := 0; i < 10; i++ {
-		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i}
+	//插入cnt台矿机
+	for i := 0; i < cnt; i++ {
+		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
 		//log.Printf("m:+%v", m)
-		engine.Insert(&m)
+		engine.Insert(&m, "load")
 	}
-
-	/*
-		for i := 0; i < cnt; i++ {
-			m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
-			//log.Printf("m:+%v", m)
-			engine.Insert(&m)
-		}
-	*/
 	end := time.Now().Unix()
-	log.Printf("insert %d records in %d second", 10, end-start)
+	log.Printf("insert %d records in %d second", cnt, end-start)
 
-	//更新cnt次
+	//更新矿机cnt次
 	start = time.Now().Unix()
 	for i := 0; i < cnt; i++ {
 		m := models.TchMachine{Base: models.Base{ID: i % 10}, GID: 0, UID: i % 10}

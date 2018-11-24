@@ -99,7 +99,7 @@ func sortIndex(tableName string, index string) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-func Insert(obj interface{}, load ...bool) error {
+func Insert(obj interface{}, load ...interface{}) error {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
 	tableName := typ.Name()
