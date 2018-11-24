@@ -44,6 +44,17 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
+	//for test
+	sample()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	log.Println(<-sigChan)
+
+}
+
+func sample() {
+
 	u1 := models.User{Base: models.Base{ID: 1}, GID: 0, TCC: 10000}
 	engine.CreateTable(&u1)
 	engine.Insert(&u1)
@@ -56,26 +67,33 @@ func main() {
 	engine.CreateTable(&m1)
 
 	//peformance
-	cnt := 100
+	cnt := 1000000
 	start := time.Now().Unix()
-	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
+
+	//插入10台矿机
+	for i := 0; i < 10; i++ {
+		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i}
 		//log.Printf("m:+%v", m)
 		engine.Insert(&m)
 	}
-	end := time.Now().Unix()
-	log.Printf("insert %d records in %d second", cnt, end-start)
 
+	/*
+		for i := 0; i < cnt; i++ {
+			m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
+			//log.Printf("m:+%v", m)
+			engine.Insert(&m)
+		}
+	*/
+	end := time.Now().Unix()
+	log.Printf("insert %d records in %d second", 10, end-start)
+
+	//更新cnt次
 	start = time.Now().Unix()
 	for i := 0; i < cnt; i++ {
-		m := models.TchMachine{Base: models.Base{ID: i}, GID: 0, UID: i % 10}
+		m := models.TchMachine{Base: models.Base{ID: i % 10}, GID: 0, UID: i % 10}
 		engine.Update(&m)
 	}
 	end = time.Now().Unix()
 	log.Printf("update %d records in %d second", cnt, end-start)
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	log.Println(<-sigChan)
 
 }

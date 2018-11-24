@@ -5,7 +5,13 @@ import (
 )
 
 const (
-	ROWSIZE    = 100000
+	K = 1024
+	M = 1024 * K
+	G = 1024 * M
+)
+
+const (
+	ROWSIZE    = M
 	PRIMARYKEY = "pk"
 )
 

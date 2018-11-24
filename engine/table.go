@@ -128,16 +128,20 @@ func Insert(obj interface{}, load ...bool) error {
 	db.rows[tableName][id] = rid
 
 	//更新versions
-	db.versions[tableName][id] = &Version{Version: 0, UpdateStamp: time.Now().Unix(), SavedVersion: 0}
-
-	//数据持久化
-	if len(load) == 0 { //从数据库加载时load需传值，避免回写
-		putTrx(&Transaction{Cmd: "INSERT", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
+	ver := &Version{Version: 1, UpdateStamp: time.Now().Unix(), SavedVersion: 0}
+	////从数据库加载时load需传值，避免回写
+	if len(load) != 0 {
+		ver.SavedVersion = 1
 	}
+	db.versions[tableName][id] = ver
+
+	//发起持久化指令
+	putTrx(&Transaction{Cmd: "INSERT", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
 
 	//添加到主键索引
 	pk := PRIMARYKEY
 	db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
+	//索引排序
 	sortIndex(tableName, pk)
 
 	//log.Printf("insert record id[%d] in table %s's %d row", id, tableName, rid)
@@ -158,6 +162,7 @@ func Insert(obj interface{}, load ...bool) error {
 			pk += fmt.Sprintf(":%s:%v", indexs[i][j], reflect.Indirect(val).FieldByName(indexs[i][j]))
 		}
 		db.indexs[tableName][pk] = append(db.indexs[tableName][pk], id)
+		//索引排序
 		sortIndex(tableName, pk)
 	}
 	return nil
@@ -188,7 +193,7 @@ func Update(obj interface{}) error {
 		ver.Version += 1
 		ver.UpdateStamp = time.Now().Unix()
 
-		//数据持久化
+		//发起持久化指令
 		putTrx(&Transaction{Cmd: "UPDATE", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
 
 		//log.Printf("update record id[%d] in table %s's %d row", id, tableName, rid)
@@ -250,11 +255,13 @@ func Delete(obj interface{}) {
 		return
 	}
 
-	put(tableName, rid)
+	ver := db.versions[tableName][id]
 	delete(db.rows[tableName], id)
 	delete(db.versions[tableName], id)
-	//数据持久化
-	putTrx(&Transaction{Cmd: "DELETE", TableName: tableName, ID: id, Version: (db.versions[tableName][id]).Version})
+	put(tableName, rid)
+
+	//发起持久化指令
+	putTrx(&Transaction{Cmd: "DELETE", TableName: tableName, ID: id, Version: ver.Version})
 
 	//删除主键索引
 	pk := PRIMARYKEY
@@ -264,6 +271,7 @@ func Delete(obj interface{}) {
 			db.indexs[tableName][pk] = db.indexs[tableName][pk][:len(db.indexs[tableName][pk])-1]
 		}
 	}
+	//索引排序
 	sortIndex(tableName, pk)
 
 	log.Printf("delete recoed %d from %s", id, tableName)
@@ -289,6 +297,7 @@ func Delete(obj interface{}) {
 				db.indexs[tableName][pk] = db.indexs[tableName][pk][:len(db.indexs[tableName][pk])-1]
 			}
 		}
+		//索引排序
 		sortIndex(tableName, pk)
 	}
 	//log.Printf("index is %+v", db.indexs[tableName])

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"encoding/json"
 	"log"
+	"time"
 )
 
 type Transaction struct {
@@ -17,10 +19,6 @@ type Response struct {
 	ID           int
 	SavedVersion uint64
 	SavedStamp   int64
-}
-
-func Prepare() {
-
 }
 
 func putTrx(trx *Transaction) {
@@ -50,19 +48,46 @@ func getResp() *Response {
 func work() {
 	go func() {
 		for {
-			res := getResp()
-			switch res.Code {
+			resp := getResp()
+			switch resp.Code {
 			case "OK":
-				log.Printf("table %s's record %d, version %d done at %d", res.TableName, res.ID, res.SavedVersion, res.SavedStamp)
+				updateSavedVersion(resp)
+				log.Printf("table %s's record %d, version %d done at %d", resp.TableName, resp.ID, resp.SavedVersion, resp.SavedStamp)
 			case "SKIP":
-				log.Printf("table %s's record %d, version %d skipped at %d", res.TableName, res.ID, res.SavedVersion, res.SavedStamp)
+				//log.Printf("table %s's record %d, version %d skipped at %d", resp.TableName, resp.ID, resp.SavedVersion, resp.SavedStamp)
 			}
 		}
 	}()
 }
 
+func GetData(trx *Transaction) (uint64, []byte) { //return latest version data
+	lock := db.locks[trx.TableName]
+	lock.Lock()
+	defer lock.Unlock()
+
+	if ver, ok := db.versions[trx.TableName][trx.ID]; !ok || ver.SavedVersion >= trx.Version { //记录已被删除或当前版本小于已保存版本
+		return 0, nil
+	}
+	rid := db.rows[trx.TableName][trx.ID]
+	obj := db.tables[trx.TableName][rid]
+	ver := db.versions[trx.TableName][trx.ID].Version
+	buf, _ := json.Marshal(obj)
+	return ver, buf
+}
+
+func updateSavedVersion(resp *Response) {
+	lock := db.locks[resp.TableName]
+	lock.Lock()
+	defer lock.Unlock()
+
+	if ver, ok := db.versions[resp.TableName][resp.ID]; ok && ver.SavedVersion < resp.SavedVersion {
+		ver.SavedVersion = resp.SavedVersion
+		ver.SavedStamp = time.Now().Unix()
+	}
+}
+
 const (
-	WORKCHANSIZE = 100000
+	WORKCHANSIZE = 10 * M
 )
 
 var ReqChan chan *Transaction
