@@ -241,7 +241,6 @@ func UpdateFiled(obj interface{}, fieldName string, cmd string, value interface{
 			}
 		default:
 			fmt.Printf("type is %+v", val.FieldByName(fieldName).Type().Kind())
-			db.tables[tableName][rid] = val
 		}
 		//更新meta
 		meta := db.metas[tableName][id]
