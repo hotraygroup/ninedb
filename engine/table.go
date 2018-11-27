@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"github.com/shopspring/decimal"
 	"log"
 	"reflect"
 	"sort"
@@ -206,8 +207,8 @@ func Update(obj interface{}) error {
 	return nil
 }
 
-//更新某个列 cmd 支持REPLACE， INC, DESC
-func UpdateFiled(obj interface{}, fieldName string, cmd string, value interface{}) error {
+//更新某个列 cmd 支持REPLACE， INC, DESC, ZEEO
+func UpdateField(obj interface{}, fieldName string, cmd string, value interface{}) error {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
 	tableName := typ.Name()
@@ -226,18 +227,48 @@ func UpdateFiled(obj interface{}, fieldName string, cmd string, value interface{
 
 	if rid, ok := db.rows[tableName][id]; ok {
 		val := reflect.ValueOf(db.tables[tableName][rid]).Elem()
+
 		switch val.FieldByName(fieldName).Type().Kind() {
 		case reflect.String:
-			val.FieldByName(fieldName).SetString(value.(string))
-		case reflect.Int64, reflect.Int32, reflect.Int:
+			switch cmd {
+			case "REPLACE":
+				val.FieldByName(fieldName).SetString(value.(string))
+			case "INC":
+				d1, err := decimal.NewFromString(val.FieldByName(fieldName).String())
+				if err != nil {
+					return err
+				}
+				d2, err := decimal.NewFromString(value.(string))
+				if err != nil {
+					return err
+				}
+				val.FieldByName(fieldName).SetString(d1.Add(d2).String())
+			case "DESC":
+				d1, err := decimal.NewFromString(val.FieldByName(fieldName).String())
+				if err != nil {
+					return err
+				}
+				d2, err := decimal.NewFromString(value.(string))
+				if err != nil {
+					return err
+				}
+				if d1.GreaterThanOrEqual(d2) {
+					val.FieldByName(fieldName).SetString(d1.Sub(d2).String())
+				} else {
+					return fmt.Errorf("record %d %s not enough", id, fieldName)
+				}
+			default:
+				panic(fmt.Errorf("unsupport update cmd %s ", cmd))
+			}
+		case reflect.Int, reflect.Int32, reflect.Int64:
 			switch cmd {
 			case "REPLACE":
 				val.FieldByName(fieldName).SetInt(value.(int64))
 			case "INC":
-				val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() + value.(int64))
+				val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() + int64(value.(int)))
 			case "DESC":
 				if val.FieldByName(fieldName).Int() >= value.(int64) {
-					val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() - value.(int64))
+					val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() - int64(value.(int)))
 				} else {
 					return fmt.Errorf("record %d %s not enough", id, fieldName)
 				}
@@ -245,7 +276,7 @@ func UpdateFiled(obj interface{}, fieldName string, cmd string, value interface{
 				panic(fmt.Errorf("unsupport update cmd %s ", cmd))
 			}
 		default:
-			fmt.Printf("type is %+v", val.FieldByName(fieldName).Type().Kind())
+			log.Printf("unsupport type is %+v in table[%s],field[%s]", val.FieldByName(fieldName).Type().Kind(), tableName, fieldName)
 		}
 		//更新meta
 		meta := db.metas[tableName][id]

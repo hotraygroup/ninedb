@@ -1,9 +1,11 @@
 package models
 
 type User struct {
-	UID int
-	GID int
-	TCC int
+	UID  int
+	GID  int
+	TCC  string
+	ETH  string
+	Desc string
 }
 
 func (u *User) GetID() int {

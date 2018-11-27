@@ -8,7 +8,7 @@ import (
 )
 
 //用户转账
-func Transfer(fromID int, toID int, asset string, amount int64) error {
+func Transfer(fromID int, toID int, asset string, amount string) error {
 	from := &models.User{UID: fromID}
 	to := &models.User{UID: toID}
 
@@ -19,13 +19,13 @@ func Transfer(fromID int, toID int, asset string, amount int64) error {
 	}
 
 	//先扣钱
-	if err := engine.UpdateFiled(from, asset, "DESC", amount); err != nil {
+	if err := engine.UpdateField(from, asset, "DESC", amount); err != nil {
 		log.Printf("user %d asset[%s] DESC failed", fromID, asset)
 		return err
 	}
 
 	//再发钱
-	if err := engine.UpdateFiled(to, asset, "INC", amount); err != nil {
+	if err := engine.UpdateField(to, asset, "INC", amount); err != nil {
 		log.Printf("user %d asset[%s] INC failed", toID, asset)
 		return err
 	}
