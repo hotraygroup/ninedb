@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/shopspring/decimal"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -57,12 +58,12 @@ func main() {
 func sample() {
 
 	//////////////////建表/////////////////////////////////////////
-	u1 := models.User{UID: 1, GID: 0, TCC: "10000", ETH: "0.1234555"}
+	u1 := models.User{UID: 1, GID: 0, TCC: decimal.New(99, 2), ETH: decimal.New(199, 2), NASH: decimal.New(299, 2), Worker: map[int]bool{2: true}}
 	engine.CreateTable(&u1)
 	engine.Insert(&u1)
 	engine.Insert(&u1)
 
-	u2 := models.User{UID: 2, GID: 0, TCC: "10000", ETH: "1.112233445566778899"}
+	u2 := models.User{UID: 2, GID: 0, TCC: decimal.New(99, 2), ETH: decimal.New(199, 2), NASH: decimal.New(299, 2), Worker: map[int]bool{1: true}}
 	engine.Insert(&u2)
 
 	m1 := models.TchMachine{}
@@ -73,7 +74,7 @@ func sample() {
 	ucnt := 10
 	//插入ucnt个用户
 	for i := 0; i <= ucnt; i++ {
-		u := models.User{UID: i, GID: 0, TCC: "10000", ETH: "1.112233445566778899"}
+		u := models.User{UID: i, GID: 0, TCC: decimal.New(99, 2), ETH: decimal.New(199, 2), NASH: decimal.New(299, 2), Worker: map[int]bool{1: true}}
 		engine.Insert(&u)
 	}
 	mcnt := 10
@@ -108,15 +109,24 @@ func sample() {
 	//engine.UpdateFunc((controller.Transfer(nil, nil, nil)).(engine.CallBack))
 	log.Printf("before transfer: user1: %+v, user2: %+v", engine.Get(&u1), engine.Get(&u2))
 
-	controller.Transfer(1, 2, "TCC", "10")
-	controller.Transfer(1, 2, "TCC", "100000000")
+	controller.Transfer(1, 2, "TCC", decimal.New(1, 1))
+	controller.Transfer(1, 2, "TCC", decimal.New(1, 100))
 
-	controller.Transfer(1, 2, "ETH", "0.1")
+	controller.Transfer(1, 2, "ETH", decimal.New(1, -1))
+
+	controller.Transfer(1, 2, "NASH", decimal.New(1, 2))
 
 	log.Printf("after transfer: user1: %+v, user2: %+v", engine.Get(&u1), engine.Get(&u2))
 
 	log.Printf("before u1 is %+v", u1)
 	engine.UpdateField(&u1, "Desc", "REPLACE", "ssss")
+	engine.UpdateField(&u1, "Worker", "REPLACE", map[int]bool{3: true})
+
+	engine.UpdateField(&u1, "I1", "ZERO", 0)
+	engine.UpdateField(&u1, "I1", "REPLACE", 1000)
+	engine.UpdateField(&u1, "I1", "INC", 100)
+	engine.UpdateField(&u1, "I1", "DESC", 10)
+
 	log.Printf("after u1 is %+v", u1)
 
 	///////////////////转账/////////////////////////////////////////////

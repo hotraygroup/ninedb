@@ -207,7 +207,7 @@ func Update(obj interface{}) error {
 	return nil
 }
 
-//更新某个列 cmd 支持REPLACE， INC, DESC, ZEEO
+//更新某个列 cmd 支持REPLACE， INC, DESC, ZEEO,
 func UpdateField(obj interface{}, fieldName string, cmd string, value interface{}) error {
 	val := reflect.ValueOf(obj)
 	typ := reflect.Indirect(val).Type()
@@ -229,49 +229,43 @@ func UpdateField(obj interface{}, fieldName string, cmd string, value interface{
 		val := reflect.ValueOf(db.tables[tableName][rid]).Elem()
 
 		switch val.FieldByName(fieldName).Type().Kind() {
-		case reflect.String:
-			switch cmd {
-			case "REPLACE":
-				val.FieldByName(fieldName).SetString(value.(string))
-			case "INC":
-				d1, err := decimal.NewFromString(val.FieldByName(fieldName).String())
-				if err != nil {
-					return err
+		case reflect.Map, reflect.String, reflect.Struct: //直接替换的类型
+			if val.FieldByName(fieldName).Type().Name() == "Decimal" {
+				d1 := val.FieldByName(fieldName).Interface().(decimal.Decimal)
+				d2 := value.(decimal.Decimal)
+				switch cmd {
+				case "REPLACE":
+					val.FieldByName(fieldName).Set(reflect.ValueOf(value))
+				case "INC":
+					val.FieldByName(fieldName).Set(reflect.ValueOf(d1.Add(d2)))
+				case "DESC":
+					if d1.GreaterThanOrEqual(d2) {
+						val.FieldByName(fieldName).Set(reflect.ValueOf(d1.Sub(d2)))
+					} else {
+						return fmt.Errorf("record %d %s not enough", id, fieldName)
+					}
+				case "ZERO":
+					val.FieldByName(fieldName).Set(reflect.ValueOf(decimal.Zero))
+				default:
+					panic(fmt.Errorf("unsupport update cmd %s ", cmd))
 				}
-				d2, err := decimal.NewFromString(value.(string))
-				if err != nil {
-					return err
-				}
-				val.FieldByName(fieldName).SetString(d1.Add(d2).String())
-			case "DESC":
-				d1, err := decimal.NewFromString(val.FieldByName(fieldName).String())
-				if err != nil {
-					return err
-				}
-				d2, err := decimal.NewFromString(value.(string))
-				if err != nil {
-					return err
-				}
-				if d1.GreaterThanOrEqual(d2) {
-					val.FieldByName(fieldName).SetString(d1.Sub(d2).String())
-				} else {
-					return fmt.Errorf("record %d %s not enough", id, fieldName)
-				}
-			default:
-				panic(fmt.Errorf("unsupport update cmd %s ", cmd))
+			} else { //REPLACE
+				val.FieldByName(fieldName).Set(reflect.ValueOf(value))
 			}
-		case reflect.Int, reflect.Int32, reflect.Int64:
+		case reflect.Int:
 			switch cmd {
 			case "REPLACE":
-				val.FieldByName(fieldName).SetInt(value.(int64))
+				val.FieldByName(fieldName).SetInt(int64(value.(int)))
 			case "INC":
 				val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() + int64(value.(int)))
 			case "DESC":
-				if val.FieldByName(fieldName).Int() >= value.(int64) {
+				if val.FieldByName(fieldName).Int() >= int64(value.(int)) {
 					val.FieldByName(fieldName).SetInt(val.FieldByName(fieldName).Int() - int64(value.(int)))
 				} else {
 					return fmt.Errorf("record %d %s not enough", id, fieldName)
 				}
+			case "ZERO":
+				val.FieldByName(fieldName).SetInt(0)
 			default:
 				panic(fmt.Errorf("unsupport update cmd %s ", cmd))
 			}

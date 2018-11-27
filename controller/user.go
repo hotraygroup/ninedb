@@ -2,13 +2,14 @@ package controller
 
 import (
 	"fmt"
+	"github.com/shopspring/decimal"
 	"log"
 	"ninedb/engine"
 	"ninedb/models"
 )
 
 //用户转账
-func Transfer(fromID int, toID int, asset string, amount string) error {
+func Transfer(fromID int, toID int, asset string, amount decimal.Decimal) error {
 	from := &models.User{UID: fromID}
 	to := &models.User{UID: toID}
 
